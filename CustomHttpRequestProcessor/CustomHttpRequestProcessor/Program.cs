@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -9,9 +10,9 @@ namespace CustomHttpRequestProcessor
     {
         private static void Main(string[] args)
         {
-            var ipAddresses = Dns.GetHostAddresses(Dns.GetHostName());
-
-            var localEndPoint = new IPEndPoint(ipAddresses[0], 8080);
+            var ipHostEntry = Dns.GetHostEntry(Dns.GetHostName());
+            var ipAddress = ipHostEntry.AddressList.First(x => x.AddressFamily == AddressFamily.InterNetwork);
+            var localEndPoint = new IPEndPoint(ipAddress, 8080);
 
             var tcpListener = new TcpListener(localEndPoint);
 
@@ -19,11 +20,18 @@ namespace CustomHttpRequestProcessor
 
             Console.WriteLine("Listening...");
 
+            TcpClient tcpClient = null;
+
             while (true)
             {
                 try
                 {
-                    var tcpClient = tcpListener.AcceptTcpClient();
+                    if (tcpClient != null)
+                    {
+                        tcpClient.Close();
+                    }
+
+                    tcpClient = tcpListener.AcceptTcpClient();
 
                     if (tcpClient.Connected)
                     {
@@ -31,16 +39,17 @@ namespace CustomHttpRequestProcessor
 
                         Console.WriteLine(receiveMessage);
 
-                        var sb = new StringBuilder();
-                        sb.AppendLine(@"HTTP/1.1 200 OK");
-                        sb.AppendLine(@"Content-Length: 66");
-                        sb.AppendLine(string.Empty);
-                        sb.AppendLine(
+                        var body =
                             string.Format(
-                                @"<html><body>Hello World! ({0:yyyy/MM/dd HH:mm:ss.fff})</body></html>",
-                                DateTime.Now));
+                                "<html><body><h1>Hello World! ({0:yyyy/MM/dd HH:mm:ss.fff})</h1></body></html>\r\n",
+                                DateTime.Now);
 
-                        SendMessage(sb.ToString(), tcpClient);
+                        var headers =
+                            string.Format(
+                                "HTTP/1.1 200 OK\r\nContent-type: text/html\r\nContent-Length: {0}\n\n",
+                                Encoding.ASCII.GetByteCount(body));
+
+                        SendMessage(headers + body, tcpClient);
                     }
                 }
                 catch (Exception ex)
